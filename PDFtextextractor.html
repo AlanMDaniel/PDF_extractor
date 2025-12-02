@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Text Liberator</title>
+    <style>
+        :root { --primary: #2b2b2b; --accent: #007bff; --bg: #f4f4f9; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background: var(--bg); color: #333; margin: 0; }
+        
+        /* Layout */
+        .header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; height: calc(100vh - 100px); }
+        .panel { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* Controls */
+        h2 { margin: 0; font-size: 1.2rem; margin-right: 15px; }
+        .controls { display: flex; gap: 10px; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 4px; cursor: pointer; font-weight: 500; transition: background 0.2s; white-space: nowrap;}
+        button.secondary { background: #6c757d; }
+        button:hover { background: #444; }
+        #status { font-size: 0.9rem; color: #666; margin-left: 10px; }
+        input[type="file"] { max-width: 200px; }
+
+        /* Content Areas */
+        textarea { width: 100%; flex-grow: 1; border: 1px solid #ddd; padding: 10px; font-family: 'Courier New', monospace; resize: none; border-radius: 4px; box-sizing: border-box; }
+        iframe { width: 100%; flex-grow: 1; border: none; background: #eee; border-radius: 4px; }
+        h3 { margin-top: 0; margin-bottom: 10px; font-size: 1rem; color: #555; }
+
+        /* Mobile Optimization */
+        @media (max-width: 768px) {
+            .container { grid-template-columns: 1fr; height: auto; }
+            .panel { height: 500px; }
+            .header { flex-direction: column; align-items: flex-start; }
+            .controls { width: 100%; justify-content: space-between; margin-top: 10px; }
+            button { flex: 1; }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
+</head>
+<body>
+
+<div class="header">
+    <div style="display:flex; align-items:center; flex-wrap:wrap;">
+        <h2>PDF Liberator</h2>
+        <input type="file" id="fileInput" accept="application/pdf" />
+        <span id="status"></span>
+    </div>
+    <div class="controls">
+        <button class="secondary" onclick="copyText()">Copy Text</button>
+        <button onclick="downloadText()">Download .txt</button>
+    </div>
+</div>
+
+<div class="container">
+    <div class="panel">
+        <h3>Original PDF</h3>
+        <iframe id="pdfPreview"></iframe>
+    </div>
+
+    <div class="panel">
+        <h3>Extracted Text Layer</h3>
+        <textarea id="output" placeholder="Select a PDF to begin..."></textarea>
+    </div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const output = document.getElementById('output');
+    const status = document.getElementById('status');
+    const pdfPreview = document.getElementById('pdfPreview');
+    
+    let currentFileName = "document";
+
+    fileInput.addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Save filename for download later
+        currentFileName = file.name.replace(/\.[^/.]+$/, "");
+
+        // Display PDF
+        const fileURL = URL.createObjectURL(file);
+        pdfPreview.src = fileURL;
+
+        status.textContent = "Processing...";
+        output.value = "";
+
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+        
+        let fullText = "";
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+            status.textContent = `Reading ${i}/${pdf.numPages}...`;
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            
+            // Simple logic: join strings with spaces, add newlines for pages
+            // This preserves paragraph order but kills complex tables
+            const pageText = textContent.items.map(item => item.str).join(' ');
+            fullText += `--- Page ${i} ---\n${pageText}\n\n`;
+        }
+
+        output.value = fullText;
+        status.textContent = `Done! (${pdf.numPages} pages)`;
+    });
+
+    function copyText() {
+        if (!output.value) return;
+        output.select();
+        document.execCommand('copy');
+        status.textContent = "Copied to clipboard!";
+        setTimeout(() => status.textContent = `Done!`, 2000);
+    }
+
+    function downloadText() {
+        const text = output.value;
+        if (!text) {
+            alert("No text extracted yet.");
+            return;
+        }
+        
+        // Create a blob and trigger download
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        
+        a.href = url;
+        a.download = `${currentFileName}_text.txt`;
+        document.body.appendChild(a);
+        a.click();
+        
+        // Cleanup
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+</script>
+
+</body>
+</html>
